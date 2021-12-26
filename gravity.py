@@ -1,4 +1,5 @@
-import sys, os
+import sys
+import os
 import warnings
 import time
 import datetime
@@ -26,9 +27,11 @@ settings = {
     'paused': False,
     'show_center_of_mass': False,
     'display_names': True,
-    'hovering': False,
     'planet_rescale_factor': 500,
-    'camera_offset': np.array([0,0], dtype=np.float64),
+    'circumference_thickness': 2,
+    'hollow_segment_length': 3,
+    'fragments': 5,
+    'zoom_increment_factor': 1.1,
 }
 
 COLORS = {
@@ -37,14 +40,8 @@ COLORS = {
     'HOVERING': pygame.Color('#bbbbbb'),
     'SELECTED': pygame.Color('#ddeeff'),
     'EMPTY': pygame.Color(0,0,0,0),
-    'FADE': pygame.Color(255,255,255,240)
+    'FADE': pygame.Color(255,255,255,240),
 }
-
-zoom_increment_factor = 1.1
-
-circumference_thickness = 2
-hollow_segment_length = 3
-fragments = 4
 
 settings.update(cfg.readConfig('config.cfg'))
 
@@ -60,8 +57,8 @@ clock = pygame.time.Clock()
 
 path_surface_margin = np.array((10, 10), dtype=np.int32)
 path_surface_size = (WIDTH+path_surface_margin[0]*2, HEIGHT+path_surface_margin[1]*2)
-zoom_in_WIDTH, zoom_in_HEIGHT = int(path_surface_size[0]*zoom_increment_factor), int(path_surface_size[1]*zoom_increment_factor)
-zoom_out_WIDTH, zoom_out_HEIGHT = int(path_surface_size[0]/zoom_increment_factor), int(path_surface_size[1]/zoom_increment_factor)
+zoom_in_WIDTH, zoom_in_HEIGHT = int(path_surface_size[0]*settings['zoom_increment_factor']), int(path_surface_size[1]*settings['zoom_increment_factor'])
+zoom_out_WIDTH, zoom_out_HEIGHT = int(path_surface_size[0]/settings['zoom_increment_factor']), int(path_surface_size[1]/settings['zoom_increment_factor'])
 
 if path_surface_size[0] * path_surface_size[1] > 1500*1500:
     warnings.warn("Path surface margin is high, which may cause lag spikes.")
@@ -72,13 +69,6 @@ if WIDTH > 1920 or HEIGHT > 1080:
 gui_background = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA, 32)
 gui_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA, 32)
 
-def screen_position(true_position, offset=(0,0)):
-    return ((true_position[0]) / settings['scale'] + WIDTH/2 + settings['camera_offset'][0] + offset[0], \
-           -(true_position[1]) / settings['scale'] + HEIGHT/2 + settings['camera_offset'][1] + offset[1])
-
-def true_position(screen_position, offset=(0,0)):
-    return ((screen_position[0]-WIDTH/2-settings['camera_offset'][0]-offset[1])*settings['scale'], \
-           (screen_position[1]-HEIGHT/2-settings['camera_offset'][1]-offset[1])*settings['scale'], 0)
 
 def offset_surface(surface, offset=(0,0)):
     new_surface = surface.copy()
@@ -103,9 +93,6 @@ class Environment:
     @property
     def objects(self):
         return self.object_dict.values()
-
-    def draw():
-        pass
 
 universe = Environment('Universe', start_time=time.time())
 
@@ -218,10 +205,24 @@ def set_system(environment, system):
 
 set_system(universe, solar_system)
 
-
-
-
 def main():
+    
+    camera_offset = np.array([0,0], dtype=np.float64)
+    
+    def screen_position(true_position, offset=(0,0)):
+        return ((true_position[0]) / settings['scale'] + WIDTH/2 + camera_offset[0] + offset[0], \
+            -(true_position[1]) / settings['scale'] + HEIGHT/2 + camera_offset[1] + offset[1])
+
+    def true_position(screen_position, offset=(0,0)):
+        return ((screen_position[0]-WIDTH/2-camera_offset[0]-offset[1])*settings['scale'], \
+            (screen_position[1]-HEIGHT/2-camera_offset[1]-offset[1])*settings['scale'], 0)
+
+    def draw_body(body):
+        try:
+            gfxdraw.aacircle(screen, *tuple(map(int, screen_position(body.position))), int(body.size), body.color)
+            gfxdraw.filled_circle(screen, *tuple(map(int, screen_position(body.position))), int(body.size), body.color)
+        except:
+            pass
 
     was_left_clicked = False
     hovering = False
@@ -229,10 +230,6 @@ def main():
     path_surface = pygame.Surface((WIDTH+path_surface_margin[0]*2, HEIGHT+path_surface_margin[1]*2), pygame.SRCALPHA, 32)
     
     fade_timer = 0  
-
-    k = 0
-    fps_list = []
-    previous_time = time.perf_counter()
 
     # System to check if a key was just pressed
     last_key_state = pygame.key.get_pressed()
@@ -296,31 +293,31 @@ def main():
                 
                 if event.y == 1:
                     # Zoom in
-                    settings['scale'] /= zoom_increment_factor
+                    settings['scale'] /= settings['zoom_increment_factor']
                     
-                    offset = np.array(true_position(mouse_pos)[:-1], dtype=np.float64)/settings['scale']*(1-zoom_increment_factor)
-                    settings['camera_offset'] += offset
+                    offset = np.array(true_position(mouse_pos)[:-1], dtype=np.float64)/settings['scale']*(1-settings['zoom_increment_factor'])
+                    camera_offset += offset
 
                     temp = pygame.transform.smoothscale(path_surface, (zoom_in_WIDTH, zoom_in_HEIGHT))
                     path_surface.fill(COLORS['EMPTY'])
-                    path_surface.blit(temp, ((path_surface_size[0]-zoom_in_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-zoom_increment_factor)-1, (path_surface_size[1]-zoom_in_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-zoom_increment_factor)-1))
+                    path_surface.blit(temp, ((path_surface_size[0]-zoom_in_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-settings['zoom_increment_factor'])-1, (path_surface_size[1]-zoom_in_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-settings['zoom_increment_factor'])-1))
                     path_surface.fill(COLORS['FADE'], special_flags=pygame.BLEND_RGBA_MULT)
 
                 elif event.y == -1:
                     # Zoom out
-                    settings['scale'] *= zoom_increment_factor
+                    settings['scale'] *= settings['zoom_increment_factor']
                     
-                    offset = np.array(true_position(mouse_pos)[:-1])/settings['scale']*(1-1/zoom_increment_factor)
-                    settings['camera_offset'] += offset
+                    offset = np.array(true_position(mouse_pos)[:-1])/settings['scale']*(1-1/settings['zoom_increment_factor'])
+                    camera_offset += offset
 
                     temp = pygame.transform.smoothscale(path_surface, (zoom_out_WIDTH, zoom_out_HEIGHT))
                     path_surface.fill(COLORS['EMPTY'])
-                    path_surface.blit(temp, ((path_surface_size[0]-zoom_out_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-1/zoom_increment_factor), (path_surface_size[1]-zoom_out_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-1/zoom_increment_factor)))
+                    path_surface.blit(temp, ((path_surface_size[0]-zoom_out_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-1/settings['zoom_increment_factor']), (path_surface_size[1]-zoom_out_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-1/settings['zoom_increment_factor'])))
 
         mouse_relative_position = pygame.mouse.get_rel()
         
         if mouse_state[2]:
-            settings['camera_offset'] += np.array(mouse_relative_position)
+            camera_offset += np.array(mouse_relative_position)
             path_surface = offset_surface(path_surface, mouse_relative_position)
 
         if current_key_state[pygame.K_UP]:
@@ -353,8 +350,10 @@ def main():
         screen.fill(COLORS['BACKGROUND'])
         screen.blit(path_surface, -path_surface_margin)
         gui_surface.fill(COLORS['EMPTY'])
-        
-        # Drawing of bodies, and hovering effects.
+
+        for body in universe.objects:
+            draw_body(body)
+
         removed_bodies = []
         new_body_dict = {}
         for body in universe.objects:
@@ -366,12 +365,6 @@ def main():
 
             if mouse_distance > body_screen_size+1000:
                 continue
-            
-            try:
-                gfxdraw.aacircle(screen, *tuple(map(int, body_screen_position)), int(body_screen_size), body.color)
-                gfxdraw.filled_circle(screen, *tuple(map(int, body_screen_position)), int(body_screen_size), body.color)
-            except:
-                pass
 
             color = COLORS['HOVERING']
             
@@ -384,21 +377,21 @@ def main():
                     was_left_clicked = False
                     
                 if tracked_keys[pygame.K_x]:
-                    angle_increment = 2*math.pi/fragments
-                    mass = body.mass/fragments
+                    angle_increment = 2*math.pi/settings['fragments']
+                    mass = body.mass/settings['fragments']
                     velocity = body.velocity
                     velocity_norm = np.linalg.norm(velocity)
 
                     removed_bodies.append(body.name)
                     
-                    for n in range(fragments):
+                    for n in range(settings['fragments']):
                         angle = angle_increment*n
                         normalized_direction = np.array([math.cos(angle), math.sin(angle), 0])
                         name = f"{body.name} {n}"
                         new_body_dict[name] = Body(
                             name=name,
                             color=body.color,
-                            mass=body.mass/fragments,
+                            mass=body.mass/settings['fragments'],
                             radius=body.radius*0.4,
                             position=body.position+normalized_direction*body.radius*50,
                             velocity=velocity+(normalized_direction*velocity_norm*0.4)
@@ -417,23 +410,23 @@ def main():
 
             if body.mouse_hovering or body.selected:
                 try:
-                    gfxdraw.aacircle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(hollow_segment_length+circumference_thickness), color)
-                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(hollow_segment_length+circumference_thickness), color)
-                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+hollow_segment_length, COLORS['EMPTY'])
+                    gfxdraw.aacircle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness']), color)
+                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness']), color)
+                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+settings['hollow_segment_length'], COLORS['EMPTY'])
                     pygame.draw.line(gui_surface, COLORS['EMPTY'],
-                                    (body_screen_position[0]-(int(body_screen_size)+(hollow_segment_length+circumference_thickness)+2), body_screen_position[1]),
-                                    (body_screen_position[0]+(int(body_screen_size)+(hollow_segment_length+circumference_thickness)+2), body_screen_position[1]),
+                                    (body_screen_position[0]-(int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness'])+2), body_screen_position[1]),
+                                    (body_screen_position[0]+(int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness'])+2), body_screen_position[1]),
                                     int(body_screen_size/2)+3)
                     pygame.draw.line(gui_surface, COLORS['EMPTY'],
-                                    (body_screen_position[0], body_screen_position[1]-(int(body_screen_size)+(hollow_segment_length+circumference_thickness)+2)),
-                                    (body_screen_position[0], body_screen_position[1]+(int(body_screen_size)+(hollow_segment_length+circumference_thickness)+2)),
+                                    (body_screen_position[0], body_screen_position[1]-(int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness'])+2)),
+                                    (body_screen_position[0], body_screen_position[1]+(int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness'])+2)),
                                     int(body_screen_size/2)+3)
                 except:
                     pass
 
                 if settings['display_names']:
                     pygame.draw.line(gui_surface, color,
-                                    (body_screen_position[0]+int(body_screen_size)+(hollow_segment_length+circumference_thickness), body_screen_position[1]),
+                                    (body_screen_position[0]+int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness']), body_screen_position[1]),
                                     (body_screen_position[0]+int(body_screen_size)+60, body_screen_position[1]),
                                     )
                     gui_surface.blit(Consolas.render(body.name, True, color), (body_screen_position[0]+int(body_screen_size)+66, body_screen_position[1]-7))
@@ -469,7 +462,6 @@ def main():
             (f"{round(settings['delta_time']/60/60/24,2)} days per second", COLORS['TEXT']),
             (f"{round(settings['delta_time']/60/60/24/365.25,3)} years per second", COLORS['TEXT']),
             (f"{round(settings['scale']/10**(int(math.log10(settings['scale']))),3)}e{int(math.log10(settings['scale']))} meters per pixel", COLORS['TEXT']),
-            #(f"{round(average_fps, 2)} frames per second", COLORS['TEXT']),
             (f"Total mass: {round(universe.mass/10**(int(math.log10(universe.mass))),6)}e{int(math.log10(universe.mass))} kg", COLORS['TEXT']),
             ]
         
@@ -480,7 +472,6 @@ def main():
 
         pygame.display.update()
 
-        k += 1
         clock.tick(FPS)
 
 if __name__ == '__main__':
