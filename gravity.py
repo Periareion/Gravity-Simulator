@@ -12,25 +12,28 @@ from pygame import gfxdraw
 
 import numpy as np
 
-import modules.configurator as cfg
+from modules import configurator as cfg
 
 G = 6.6743*10**-11
-au = 1.495978707*10**11
+AU = 1.495978707*10**11
 WIDTH, HEIGHT = 1080, 720
 FPS = 300
 
-scale = au / 100
+scale = AU / 100
 
 settings = {
-    'scale': scale,
-    'delta_time': 200000,
     'paused': False,
+    'delta_time': 200000,
+    'fragments': 5,
+}
+
+visual_settings = {
+    'scale': scale,
     'show_center_of_mass': False,
     'display_names': True,
     'planet_rescale_factor': 500,
     'circumference_thickness': 2,
-    'hollow_segment_length': 3,
-    'fragments': 5,
+    'hollow_segment_length': 10,
     'zoom_increment_factor': 1.1,
 }
 
@@ -43,7 +46,9 @@ COLORS = {
     'FADE': pygame.Color(255,255,255,240),
 }
 
-settings.update(cfg.readConfig('config.cfg'))
+dir = os.path.dirname(__file__)
+
+settings.update(cfg.readConfig(os.path.join(dir, r'config.cfg')))
 
 pygame.font.init()
 Courier_New = pygame.font.SysFont('Courier New', 16)
@@ -51,7 +56,7 @@ Consolas = pygame.font.SysFont('Consolas', 16)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('Gravity Simulation')
-pygame.display.set_icon(pygame.image.load('icon.png'))
+pygame.display.set_icon(pygame.image.load(os.path.join(dir, 'icon.png')))
 
 clock = pygame.time.Clock()
 
@@ -167,7 +172,7 @@ class Body:
 
 
 from systems import solar_system, sagittarius
-from spacemath import kep_to_cart
+from modules import spacemath
 
 def set_system(environment, system):
     print(f"Setting up {system.name}")
@@ -189,7 +194,7 @@ def set_system(environment, system):
             planet.color,
             planet.mass,
             planet.radius,
-            *kep_to_cart(
+            *spacemath.kep_to_cart(
                 G*parent_body.mass,
                 planet.a,
                 planet.e,
