@@ -1,12 +1,20 @@
+
 import math
-import pygame
+import sys, os
+
+if __name__ == '__main__':
+    sys.path.insert(0, os.path.abspath('../constants'))
+else:
+    sys.path.insert(0, os.path.abspath('./constants'))
+
+import const
 
 class Object:
 
     def __init__(self, name, color='#1ecaee', mass=1, radius=1, a=None, e=None, i=None, lon_AN=None, lon_Pe=None, ML=None, Epoch=None):
 
         self.name = name
-        self.color = pygame.Color(color)
+        self.color = color
         
         self.mass = mass
         self.radius = radius
@@ -33,8 +41,6 @@ class System:
         self.parent = parent
         self.planets = planets
 
-au = 1.495978707*10**11
-
 solar_system = System(
 
     "Solar System",
@@ -54,7 +60,7 @@ solar_system = System(
             3.3011*10**23,
             2.4397*10**6,
 
-            0.38709893*au,
+            0.38709893*const.AU,
             0.20563069,
             7.00487,
             48.33167,
@@ -68,7 +74,7 @@ solar_system = System(
             4.8675*10**24,
             6.0518*10**6,
 
-            0.72333199*au,
+            0.72333199*const.AU,
             0.00677323,
             3.39471,
             76.68069,
@@ -82,7 +88,7 @@ solar_system = System(
             5.972*10**24,
             6.371*10**6,
 
-            1.00000011*au,
+            1.00000011*const.AU,
             0.01671022,
             0.00005,
             -11.26064,
@@ -96,7 +102,7 @@ solar_system = System(
             6.4171*10**23,
             3.3895*10**6,
 
-            1.52366231*au,
+            1.52366231*const.AU,
             0.09341233,
             1.85061,
             49.57854,
@@ -110,7 +116,7 @@ solar_system = System(
             1.89813*10**27,
             7.1492*10**7,
 
-            5.20336301*au,
+            5.20336301*const.AU,
             0.04839266,
             1.30530,
             100.55615,
@@ -124,7 +130,7 @@ solar_system = System(
             5.6832*10**26,
             6.268*10**7,
 
-            9.53707032*au,
+            9.53707032*const.AU,
             0.05415060,
             2.48446,
             113.71504,
@@ -138,7 +144,7 @@ solar_system = System(
             8.6811*10**25,
             2.5559*10**7,
 
-            19.19126393*au,
+            19.19126393*const.AU,
             0.04716771,
             0.76986,
             74.22988,
@@ -152,7 +158,7 @@ solar_system = System(
             1.02409*10**26,
             2.4764*10**7,
 
-            30.06896348*au,
+            30.06896348*const.AU,
             0.00858587,
             1.76917,
             131.72169,

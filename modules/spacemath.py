@@ -1,9 +1,5 @@
-import astropy.constants
 from scipy.special import jv
 import numpy as np
-
-G = astropy.constants.G.value
-AU = astropy.constants.au.value
 
 import time
 

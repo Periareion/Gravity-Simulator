@@ -5,6 +5,7 @@ import time
 import datetime
 import math
 
+sys.path.append('.\assets')
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 
 import pygame
@@ -14,26 +15,26 @@ import numpy as np
 
 from modules import configurator as cfg
 
-G = 6.6743*10**-11
-AU = 1.495978707*10**11
-WIDTH, HEIGHT = 1080, 720
-FPS = 300
+from constants import const
 
-scale = AU / 100
+WIDTH, HEIGHT = 1080, 720
 
 settings = {
+    'TARGET_SIM_FPS': 500,
     'paused': False,
+    'simulation_start_time': time.time(),
     'delta_time': 200000,
     'fragments': 5,
 }
 
 visual_settings = {
-    'scale': scale,
+    'FPS': 60,
+    'scale': const.AU / 100,
     'show_center_of_mass': False,
     'display_names': True,
     'planet_rescale_factor': 500,
     'circumference_thickness': 2,
-    'hollow_segment_length': 10,
+    'hollow_segment_length': 5,
     'zoom_increment_factor': 1.1,
 }
 
@@ -46,9 +47,9 @@ COLORS = {
     'FADE': pygame.Color(255,255,255,240),
 }
 
-dir = os.path.dirname(__file__)
 
-settings.update(cfg.readConfig(os.path.join(dir, r'config.cfg')))
+settings['TRUE_FPS'] = settings['TARGET_SIM_FPS']
+dir = os.path.dirname(__file__)
 
 pygame.font.init()
 Courier_New = pygame.font.SysFont('Courier New', 16)
@@ -56,14 +57,14 @@ Consolas = pygame.font.SysFont('Consolas', 16)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('Gravity Simulation')
-pygame.display.set_icon(pygame.image.load(os.path.join(dir, 'icon.png')))
+pygame.display.set_icon(pygame.image.load('assets\\icon.png'))
 
 clock = pygame.time.Clock()
 
 path_surface_margin = np.array((10, 10), dtype=np.int32)
 path_surface_size = (WIDTH+path_surface_margin[0]*2, HEIGHT+path_surface_margin[1]*2)
-zoom_in_WIDTH, zoom_in_HEIGHT = int(path_surface_size[0]*settings['zoom_increment_factor']), int(path_surface_size[1]*settings['zoom_increment_factor'])
-zoom_out_WIDTH, zoom_out_HEIGHT = int(path_surface_size[0]/settings['zoom_increment_factor']), int(path_surface_size[1]/settings['zoom_increment_factor'])
+zoom_in_WIDTH, zoom_in_HEIGHT = int(path_surface_size[0]*visual_settings['zoom_increment_factor']), int(path_surface_size[1]*visual_settings['zoom_increment_factor'])
+zoom_out_WIDTH, zoom_out_HEIGHT = int(path_surface_size[0]/visual_settings['zoom_increment_factor']), int(path_surface_size[1]/visual_settings['zoom_increment_factor'])
 
 if path_surface_size[0] * path_surface_size[1] > 1500*1500:
     warnings.warn("Path surface margin is high, which may cause lag spikes.")
@@ -73,7 +74,7 @@ if WIDTH > 1920 or HEIGHT > 1080:
 
 gui_background = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA, 32)
 gui_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA, 32)
-
+empty_gui_surface = gui_surface.copy()
 
 def offset_surface(surface, offset=(0,0)):
     new_surface = surface.copy()
@@ -83,7 +84,7 @@ def offset_surface(surface, offset=(0,0)):
 
 class Environment:
 
-    def __init__(self, name, object_dict={}, start_time=0, delta_time=settings['delta_time'], softening=80000000, G=6.6743*10**-11):
+    def __init__(self, name, object_dict={}, start_time=0, delta_time=settings['delta_time'], softening=9000, G=6.6743*10**-11):
         self.name=name
         self.object_dict = object_dict
         self.time = start_time
@@ -99,11 +100,9 @@ class Environment:
     def objects(self):
         return self.object_dict.values()
 
-universe = Environment('Universe', start_time=time.time())
+universe = Environment('Universe', start_time=settings['simulation_start_time'])
 
 class Body:
-
-    global universe
 
     def __init__(
             self,
@@ -128,20 +127,19 @@ class Body:
         self.new_velocity = self.velocity
         self.new_acceleration = self.acceleration
 
-        self.darker_color = pygame.Color(int(0.5*self.color.r), int(0.5*self.color.g), int(0.5*self.color.b))
+        self.darker_color = pygame.Color(*(int(0.5*x) for x in [self.color.r, self.color.g, self.color.b]))
         self.mouse_hovering = False
         self.selected = False
 
     @property
     def size(self):
         # meters / meters per pixel = pixels
-        size = self.radius/settings['scale']
-
+        size = self.radius/visual_settings['scale']
         
         if self.name != 'Sol' and universe.name == 'Solar System':
-            size *= settings['planet_rescale_factor']
+            size *= visual_settings['planet_rescale_factor']
         #else:
-        #    size = (self.mass)**(1/20)*200000000/settings['scale']
+        #    size = (self.mass)**(1/20)*200000000/visual_settings['scale']
             
         if size < 1:
             size = 1
@@ -150,28 +148,25 @@ class Body:
 
     def update_position(self):
 
-        self.new_position = self.position + self.velocity * settings['delta_time'] / FPS + self.acceleration*(0.5*(settings['delta_time']/FPS)**2)
+        self.new_position = self.position + self.velocity * settings['delta_time'] / settings['TARGET_SIM_FPS'] + self.acceleration*(0.5*(settings['delta_time']/settings['TARGET_SIM_FPS'])**2)
 
-    def update_acceleration(self):
+    def update_acceleration(self, universe_objects):
         
         self.new_acceleration = np.array([0,0,0], dtype=np.float64)
         
-        for other in universe.objects:
+        for other in universe_objects:
             dist = other.position - self.new_position
-            dist_norm = math.sqrt(sum((dim**2 for dim in dist))+universe.softening)
+            dist_norm = math.sqrt(sum((dim**2 for dim in dist))+universe.softening**2)
             
             if self == other or dist_norm < self.radius + other.radius:
                 continue
             
-            self.new_acceleration += G * other.mass * dist / dist_norm**3
+            self.new_acceleration += const.G * other.mass * dist / dist_norm**3
 
     def update_velocity(self):
         
-        self.new_velocity = self.velocity + (self.new_acceleration + self.acceleration) * 0.5 * settings['delta_time'] / FPS
+        self.new_velocity = self.velocity + (self.new_acceleration + self.acceleration) * 0.5 * settings['delta_time'] / settings['TARGET_SIM_FPS']
 
-
-
-from systems import solar_system, sagittarius
 from modules import spacemath
 
 def set_system(environment, system):
@@ -183,10 +178,10 @@ def set_system(environment, system):
     parent_body = Body(parent.name, parent.color, parent.mass, parent.radius, [0,0,0], [0,0,0])
     environment.object_dict[parent_body.name] = (parent_body)
 
-    settings['scale'] = parent_body.radius
+    visual_settings['scale'] = parent_body.radius
 
-    # Sub-systems
-    
+    # Sub-systems needed
+
     planets = system.planets
     for planet in planets:
         planet_body = Body(
@@ -195,7 +190,7 @@ def set_system(environment, system):
             planet.mass,
             planet.radius,
             *spacemath.kep_to_cart(
-                G*parent_body.mass,
+                const.G*parent_body.mass,
                 planet.a,
                 planet.e,
                 math.radians(planet.i),
@@ -208,6 +203,8 @@ def set_system(environment, system):
             )
         environment.object_dict[planet_body.name] = (planet_body)
 
+from modules.systems import solar_system, sagittarius
+
 set_system(universe, solar_system)
 
 def main():
@@ -215,17 +212,19 @@ def main():
     camera_offset = np.array([0,0], dtype=np.float64)
     
     def screen_position(true_position, offset=(0,0)):
-        return ((true_position[0]) / settings['scale'] + WIDTH/2 + camera_offset[0] + offset[0], \
-            -(true_position[1]) / settings['scale'] + HEIGHT/2 + camera_offset[1] + offset[1])
+        return ((true_position[0]) / visual_settings['scale'] + WIDTH/2 + camera_offset[0] + offset[0], \
+            -(true_position[1]) / visual_settings['scale'] + HEIGHT/2 + camera_offset[1] + offset[1])
 
     def true_position(screen_position, offset=(0,0)):
-        return ((screen_position[0]-WIDTH/2-camera_offset[0]-offset[1])*settings['scale'], \
-            (screen_position[1]-HEIGHT/2-camera_offset[1]-offset[1])*settings['scale'], 0)
+        return ((screen_position[0]-WIDTH/2-camera_offset[0]-offset[1])*visual_settings['scale'], \
+            (screen_position[1]-HEIGHT/2-camera_offset[1]-offset[1])*visual_settings['scale'], 0)
 
     def draw_body(body):
         try:
-            gfxdraw.aacircle(screen, *tuple(map(int, screen_position(body.position))), int(body.size), body.color)
-            gfxdraw.filled_circle(screen, *tuple(map(int, screen_position(body.position))), int(body.size), body.color)
+            screen_pos = screen_position(body.position)
+            screen_pos = int(screen_pos[0]), int(screen_pos[1])
+            gfxdraw.aacircle(screen, *screen_pos, int(body.size), body.color)
+            gfxdraw.filled_circle(screen, *screen_pos, int(body.size), body.color)
         except:
             pass
 
@@ -239,12 +238,50 @@ def main():
     # System to check if a key was just pressed
     last_key_state = pygame.key.get_pressed()
 
+    last_draw_time = time.perf_counter()
+
     tracked_keys = {
         pygame.K_x: False,
         }
 
     active = True
     while active:
+        
+        if not settings['paused']:
+            
+            for body in universe.objects:
+                body.update_position()
+                body.update_acceleration(universe.objects)
+                body.update_velocity()
+            
+            for body in universe.objects:
+
+                pygame.draw.aaline(path_surface, body.darker_color, screen_position(body.position, path_surface_margin), screen_position(body.new_position, path_surface_margin))
+                
+                body.position = body.new_position
+                body.velocity = body.new_velocity
+                body.acceleration = body.new_acceleration
+        
+            universe.time += settings['delta_time'] / settings['TARGET_SIM_FPS']
+
+        clock.tick(settings['TARGET_SIM_FPS'])
+
+        if (fps := clock.get_fps()):
+            settings['TRUE_FPS'] = fps
+
+        current_draw_time = time.perf_counter()
+        if current_draw_time-last_draw_time < 1/visual_settings['FPS']:
+            continue
+        last_draw_time = current_draw_time
+
+
+
+        # Frame draw thing
+
+#        if fade_timer < 0:
+#            fade_timer = int(100000000/settings['delta_time'])
+#            path_surface.fill(COLORS['FADE'], special_flags=pygame.BLEND_RGBA_MULT)
+#        fade_timer -= 1
         
         mouse_pos = pygame.mouse.get_pos()
 
@@ -278,7 +315,7 @@ def main():
                     settings['delta_time'] = math.copysign(settings['delta_time'],1)
 
                 elif event.key == pygame.K_m:
-                    settings['show_center_of_mass'] = not settings['show_center_of_mass']
+                    visual_settings['show_center_of_mass'] = not visual_settings['show_center_of_mass']
 
                 elif event.key == pygame.K_c:
                     path_surface.fill(COLORS['EMPTY'])
@@ -298,26 +335,26 @@ def main():
                 
                 if event.y == 1:
                     # Zoom in
-                    settings['scale'] /= settings['zoom_increment_factor']
+                    visual_settings['scale'] /= visual_settings['zoom_increment_factor']
                     
-                    offset = np.array(true_position(mouse_pos)[:-1], dtype=np.float64)/settings['scale']*(1-settings['zoom_increment_factor'])
+                    offset = np.array(true_position(mouse_pos)[:-1], dtype=np.float64)/visual_settings['scale']*(1-visual_settings['zoom_increment_factor'])
                     camera_offset += offset
 
                     temp = pygame.transform.smoothscale(path_surface, (zoom_in_WIDTH, zoom_in_HEIGHT))
                     path_surface.fill(COLORS['EMPTY'])
-                    path_surface.blit(temp, ((path_surface_size[0]-zoom_in_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-settings['zoom_increment_factor'])-1, (path_surface_size[1]-zoom_in_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-settings['zoom_increment_factor'])-1))
+                    path_surface.blit(temp, ((path_surface_size[0]-zoom_in_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-visual_settings['zoom_increment_factor'])-1, (path_surface_size[1]-zoom_in_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-visual_settings['zoom_increment_factor'])-1))
                     path_surface.fill(COLORS['FADE'], special_flags=pygame.BLEND_RGBA_MULT)
 
                 elif event.y == -1:
                     # Zoom out
-                    settings['scale'] *= settings['zoom_increment_factor']
+                    visual_settings['scale'] *= visual_settings['zoom_increment_factor']
                     
-                    offset = np.array(true_position(mouse_pos)[:-1])/settings['scale']*(1-1/settings['zoom_increment_factor'])
+                    offset = np.array(true_position(mouse_pos)[:-1])/visual_settings['scale']*(1-1/visual_settings['zoom_increment_factor'])
                     camera_offset += offset
 
                     temp = pygame.transform.smoothscale(path_surface, (zoom_out_WIDTH, zoom_out_HEIGHT))
                     path_surface.fill(COLORS['EMPTY'])
-                    path_surface.blit(temp, ((path_surface_size[0]-zoom_out_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-1/settings['zoom_increment_factor']), (path_surface_size[1]-zoom_out_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-1/settings['zoom_increment_factor'])))
+                    path_surface.blit(temp, ((path_surface_size[0]-zoom_out_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-1/visual_settings['zoom_increment_factor']), (path_surface_size[1]-zoom_out_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-1/visual_settings['zoom_increment_factor'])))
 
         mouse_relative_position = pygame.mouse.get_rel()
         
@@ -330,34 +367,9 @@ def main():
         if current_key_state[pygame.K_DOWN]:
             settings['delta_time'] /= 1.02
         
-        if not settings['paused']:
-            
-            for body in universe.objects:
-                body.update_position()
-                body.update_acceleration()
-                body.update_velocity()
-            
-            for body in universe.objects:
-
-                pygame.draw.aaline(path_surface, body.darker_color, screen_position(body.position, path_surface_margin), screen_position(body.new_position, path_surface_margin))
-                
-                body.position = body.new_position
-                body.velocity = body.new_velocity
-                body.acceleration = body.new_acceleration
-        
-            if fade_timer < 0:
-                fade_timer = int(700000000/abs(settings['delta_time']))%10000
-                path_surface.fill(COLORS['FADE'], special_flags=pygame.BLEND_RGBA_MULT)
-            fade_timer -= 1
-
-            universe.time += settings['delta_time'] / FPS
-        
         screen.fill(COLORS['BACKGROUND'])
         screen.blit(path_surface, -path_surface_margin)
-        gui_surface.fill(COLORS['EMPTY'])
-
-        for body in universe.objects:
-            draw_body(body)
+        gui_surface = empty_gui_surface.copy() #gui_surface.fill(COLORS['EMPTY'])
 
         removed_bodies = []
         new_body_dict = {}
@@ -415,31 +427,36 @@ def main():
 
             if body.mouse_hovering or body.selected:
                 try:
-                    gfxdraw.aacircle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness']), color)
-                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness']), color)
-                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+settings['hollow_segment_length'], COLORS['EMPTY'])
+                    gfxdraw.aacircle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
+                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
+                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+visual_settings['hollow_segment_length'], COLORS['EMPTY'])
                     pygame.draw.line(gui_surface, COLORS['EMPTY'],
-                                    (body_screen_position[0]-(int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness'])+2), body_screen_position[1]),
-                                    (body_screen_position[0]+(int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness'])+2), body_screen_position[1]),
+                                    (body_screen_position[0]-(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2), body_screen_position[1]),
+                                    (body_screen_position[0]+(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2), body_screen_position[1]),
                                     int(body_screen_size/2)+3)
                     pygame.draw.line(gui_surface, COLORS['EMPTY'],
-                                    (body_screen_position[0], body_screen_position[1]-(int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness'])+2)),
-                                    (body_screen_position[0], body_screen_position[1]+(int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness'])+2)),
+                                    (body_screen_position[0], body_screen_position[1]-(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2)),
+                                    (body_screen_position[0], body_screen_position[1]+(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2)),
                                     int(body_screen_size/2)+3)
                 except:
                     pass
 
-                if settings['display_names']:
+                if visual_settings['display_names']:
                     pygame.draw.line(gui_surface, color,
-                                    (body_screen_position[0]+int(body_screen_size)+(settings['hollow_segment_length']+settings['circumference_thickness']), body_screen_position[1]),
+                                    (body_screen_position[0]+int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), body_screen_position[1]),
                                     (body_screen_position[0]+int(body_screen_size)+60, body_screen_position[1]),
                                     )
                     gui_surface.blit(Consolas.render(body.name, True, color), (body_screen_position[0]+int(body_screen_size)+66, body_screen_position[1]-7))
+
+
 
         for body in removed_bodies:
             del universe.object_dict[body]
 
         universe.object_dict.update(new_body_dict)
+
+        for body in universe.objects:
+            draw_body(body)
 
         if settings['paused']:
             gui_surface.blit(Courier_New.render('SIMULATION PAUSED', True, '#4460ff'), (WIDTH/2-92, 36))
@@ -451,7 +468,7 @@ def main():
             
         hovering = False
 
-        if settings['show_center_of_mass']:
+        if visual_settings['show_center_of_mass']:
             center_of_mass = sum([body.mass*body.position for body in universe.objects])/universe.mass
             
             pygame.draw.circle(screen, '#ff4400', screen_position(center_of_mass), 2)
@@ -461,13 +478,16 @@ def main():
         except OSError:
             pass
 
+        speed = settings['delta_time']*settings['TRUE_FPS']/settings['TARGET_SIM_FPS']
+
         info = [
             (f"Date: {simulation_date}", COLORS['TEXT']),
-            (f"{round(settings['delta_time'],2)} seconds per second", COLORS['TEXT']),
-            (f"{round(settings['delta_time']/60/60/24,2)} days per second", COLORS['TEXT']),
-            (f"{round(settings['delta_time']/60/60/24/365.25,3)} years per second", COLORS['TEXT']),
-            (f"{round(settings['scale']/10**(int(math.log10(settings['scale']))),3)}e{int(math.log10(settings['scale']))} meters per pixel", COLORS['TEXT']),
+            (f"{round(speed,2)} seconds per second", COLORS['TEXT']),
+            (f"{round(speed/60/60/24,2)} days per second", COLORS['TEXT']),
+            (f"{round(speed/60/60/24/365.25,3)} years per second", COLORS['TEXT']),
+            (f"{round(visual_settings['scale']/10**(int(math.log10(visual_settings['scale']))),3)}e{int(math.log10(visual_settings['scale']))} meters per pixel", COLORS['TEXT']),
             (f"Total mass: {round(universe.mass/10**(int(math.log10(universe.mass))),6)}e{int(math.log10(universe.mass))} kg", COLORS['TEXT']),
+            (f"FPS: {round(settings['TRUE_FPS'],3)}", COLORS['TEXT'])
             ]
         
         for n, i in enumerate(info):
@@ -476,8 +496,6 @@ def main():
         screen.blit(gui_surface, (0,0))
 
         pygame.display.update()
-
-        clock.tick(FPS)
 
 if __name__ == '__main__':
     main()

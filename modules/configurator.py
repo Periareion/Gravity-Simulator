@@ -1,4 +1,6 @@
 
+import os
+
 print_format = "{k} has been set to {v}"
 
 replace_dict = {
@@ -31,11 +33,9 @@ def readLine(line):
     
     else:
         return None
-
-    #elif str(line).upper() == 'STOP':
         
-    
 def readConfig(config_file_name):
+    
     config_file = open(config_file_name,'r')
     config_dict = {}
 
@@ -59,3 +59,12 @@ def readConfig(config_file_name):
             print(print_format.format(k=key,v=value))
 
     return config_dict
+
+def update_dictionaries(updated_settings, updatable_dictionaries):
+
+    for key, value in updated_settings.items():
+    
+        for dictionary in updatable_dictionaries:
+
+            if key in dictionary.keys():
+                dictionary.update({key: value})
