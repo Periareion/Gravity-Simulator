@@ -15,7 +15,7 @@ def evaluate(value):
     except (NameError, SyntaxError):
         return str(value)
 
-def readLine(line):
+def read_line(line):
     for wrong, correct in replace_dict.items():
         line = line.replace(wrong, correct)
     
@@ -32,7 +32,7 @@ def readLine(line):
     else:
         return None
         
-def readConfig(config_file_name):
+def read_config(config_file_name):
     
     config_file = open(config_file_name,'r')
     config_dict = {}
@@ -43,7 +43,7 @@ def readConfig(config_file_name):
         
     for line in config_lines:
     
-        contents = readLine(line)
+        contents = read_line(line)
 
         if contents == 'stop':
             break

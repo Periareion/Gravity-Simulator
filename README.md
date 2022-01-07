@@ -1,7 +1,3 @@
 # Gravity-Simulator
 
-this is another change
-
-yoooo, wat dis
-
-This is another test
+This is a program that can simulate the solar system, as well as other setups of celestial objects.

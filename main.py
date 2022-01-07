@@ -49,7 +49,7 @@ COLORS = {
 
 settings['TRUE_FPS'] = settings['TARGET_SIM_FPS']
 
-updated_settings = cfg.readConfig('config.cfg')
+updated_settings = cfg.read_config('config.cfg')
 cfg.update_dictionaries(updated_settings, [settings, visual_settings, COLORS])
 
 pygame.font.init()
@@ -231,7 +231,7 @@ def main():
                     path_surface.fill(COLORS['EMPTY'])
 
                 elif event.key == pygame.K_v:
-                    contents = cfg.readLine(input("Manually redefine a variable: "))
+                    contents = cfg.read_line(input("Manually redefine a variable: "))
                     if contents == 'stop':
                         active = False
                     elif contents == None:
