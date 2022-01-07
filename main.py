@@ -19,7 +19,7 @@ from modules import const
 WIDTH, HEIGHT = 1080, 720
 
 settings = {
-    'TARGET_SIM_FPS': 500,
+    'TARGET_SIM_FPS': 700,
     'paused': False,
     'simulation_start_time': time.time(),
     'delta_time': 200000,
@@ -55,9 +55,10 @@ cfg.update_dictionaries(updated_settings, [settings, visual_settings, COLORS])
 pygame.font.init()
 Courier_New = pygame.font.SysFont('Courier New', 16)
 Consolas = pygame.font.SysFont('Consolas', 16)
+Consolas_small = pygame.font.SysFont('Consolas', 14)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('Gravity Simulation')
+pygame.display.set_caption('Gravity Simulator')
 pygame.display.set_icon(pygame.image.load('assets\\icon.png'))
 
 clock = pygame.time.Clock()
@@ -101,22 +102,29 @@ class Environment:
     def objects(self):
         return self.object_dict.values()
 
-universe = Environment('Universe', start_time=settings['simulation_start_time'])
+universe = Environment('Universe', start_time=settings['simulation_start_time']-1800)
 
-from modules.Body import Body
+from modules.ObjectClasses import Body
 
-from modules import systems
+from modules import systems_core
 
 def environment_setup(environment, system):
     environment.name = system.name
 
     visual_settings['scale'] = system.parent.radius/5
 
-    systems.load_system(environment, system, np.array([0,0,0], dtype=np.float64), np.array([0,0,0], dtype=np.float64))
+    systems_core.load_system(environment, system, np.array([0,0,0], dtype=np.float64), np.array([0,0,0], dtype=np.float64))
+
+from modules import systems
 
 environment_setup(universe, systems.solar_system)
 
 
+
+"""
+Here's the main loop.
+It's huge... I know.
+"""
 
 def main():
     
@@ -159,11 +167,16 @@ def main():
     while active:
         
         if not settings['paused']:
+        
+            removed_bodies = []
             
             for body in universe.objects:
                 body.update_position(settings['delta_time'], settings['TARGET_SIM_FPS'])
-                body.update_acceleration(universe.objects, const.G, universe.softening)
+                body.update_acceleration(universe, const.G, removed_bodies)
                 body.update_velocity(settings['delta_time'], settings['TARGET_SIM_FPS'])
+            
+            for body in removed_bodies:
+                del universe.object_dict[body]
             
             for body in universe.objects:
 
@@ -188,10 +201,11 @@ def main():
 
 
 
-#        if fade_timer < 0:
-#            fade_timer = int(100000000/settings['delta_time'])
+
+#        if fade_timer > int(100000000/settings['delta_time']):
+#            fade_timer = 0
 #            path_surface.fill(COLORS['FADE'], special_flags=pygame.BLEND_RGBA_MULT)
-#        fade_timer -= 1
+#        fade_timer += 1
         
         mouse_pos = pygame.mouse.get_pos()
 
@@ -238,8 +252,7 @@ def main():
                         pass
                     elif len(contents) == 2:
                         key, value = contents
-                        globals().update({key: value})
-                        print(cfg.print_format.format(k=key,v=value))
+                        cfg.update_dictionaries({key: value}, [settings, visual_settings, COLORS, globals()])
                     
             elif event.type == pygame.MOUSEWHEEL:
                 
@@ -309,24 +322,27 @@ def main():
                     was_left_clicked = False
                     
                 if tracked_keys[pygame.K_x]:
-                    angle_increment = 2*math.pi/settings['fragments']
-                    mass = body.mass/settings['fragments']
-                    velocity = body.velocity
-                    velocity_norm = np.linalg.norm(velocity)
+                    n = settings['fragments']
+                    angle_increment = 2*math.pi/n
+                    internal_angle = math.pi-2*math.pi/n
+                    mass = body.mass/n
 
                     removed_bodies.append(body.name)
-                    
-                    for n in range(settings['fragments']):
-                        angle = angle_increment*n
+                    fragment_radius = body.radius*0.4
+                    distance_from_center = fragment_radius/math.cos(internal_angle/2)
+
+                    for k in range(n):
+                        
+                        angle = angle_increment*k
                         normalized_direction = np.array([math.cos(angle), math.sin(angle), 0])
-                        name = f"{body.name} {n}"
+                        name = f"{body.name} {k}"
                         new_body_dict[name] = Body(
                             name=name,
                             color=body.color,
-                            mass=body.mass/settings['fragments'],
-                            radius=body.radius*0.4,
-                            position=body.position+normalized_direction*body.radius*50,
-                            velocity=velocity+(normalized_direction*velocity_norm*0.4)
+                            mass=mass,
+                            radius=fragment_radius,
+                            position=body.position+normalized_direction*distance_from_center,
+                            velocity=body.velocity+(normalized_direction)*1500000*math.sqrt(const.G*(n/2-1)*mass**0.6/distance_from_center),
                             )
 
                     tracked_keys[pygame.K_x] = False
@@ -343,9 +359,9 @@ def main():
             if body.mouse_hovering or body.selected:
                 try:
                     color = pygame.Color(color)
-                    gfxdraw.aacircle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
-                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
-                    gfxdraw.filled_circle(gui_surface, *tuple(int(x) for x in body_screen_position), int(body_screen_size)+visual_settings['hollow_segment_length'], COLORS['EMPTY'])
+                    gfxdraw.aacircle(gui_surface, *((int(x) for x in body_screen_position)), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
+                    gfxdraw.filled_circle(gui_surface, *((int(x) for x in body_screen_position)), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
+                    gfxdraw.filled_circle(gui_surface, *((int(x) for x in body_screen_position)), int(body_screen_size)+visual_settings['hollow_segment_length'], COLORS['EMPTY'])
                     pygame.draw.line(gui_surface, COLORS['EMPTY'],
                                     (body_screen_position[0]-(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2), body_screen_position[1]),
                                     (body_screen_position[0]+(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2), body_screen_position[1]),
@@ -363,6 +379,14 @@ def main():
                                     (body_screen_position[0]+int(body_screen_size)+60, body_screen_position[1]),
                                     )
                     gui_surface.blit(Consolas.render(body.name, True, color), (body_screen_position[0]+int(body_screen_size)+66, body_screen_position[1]-7))
+                    
+                    body_info = [
+                        f"Mass: {np.format_float_scientific(body.mass)}",
+                        f"Radius: {np.format_float_scientific(body.radius)}",
+                    ]
+
+                    for n, text in enumerate(body_info):
+                        gui_surface.blit(Consolas_small.render(text, True, color), (body_screen_position[0]+int(body_screen_size)+70, body_screen_position[1]+9+15*n))
 
         for body in removed_bodies:
             del universe.object_dict[body]
@@ -391,7 +415,7 @@ def main():
         try:
             simulation_date = datetime.date.fromtimestamp(universe.time).strftime('%Y-%m-%d')
         except OSError:
-            pass
+            simulation_date = f"{int(1970+universe.time/60/60/24/365.25)}"
 
         speed = settings['delta_time']*settings['TRUE_FPS']/settings['TARGET_SIM_FPS']
 
@@ -402,8 +426,9 @@ def main():
             (f"{round(speed/60/60/24/365.25,3)} years per second", COLORS['TEXT']),
             (f"{round(visual_settings['scale']/10**(int(math.log10(visual_settings['scale']))),3)}e{int(math.log10(visual_settings['scale']))} meters per pixel", COLORS['TEXT']),
             (f"Total mass: {round(universe.mass/10**(int(math.log10(universe.mass))),6)}e{int(math.log10(universe.mass))} kg", COLORS['TEXT']),
-            (f"FPS: {round(settings['TRUE_FPS'],3)}", COLORS['TEXT'])
-            ]
+            (f"Number of bodies: {len(universe.objects)}", COLORS['TEXT']),
+            (f"FPS: {round(settings['TRUE_FPS'],3)}", COLORS['TEXT']),
+        ]
         
         for n, i in enumerate(info):
             gui_surface.blit(Courier_New.render(i[0], True, i[1]), (24, 20*n+16))

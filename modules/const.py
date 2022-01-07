@@ -14,7 +14,7 @@ CONSTS = {
     'AU': au.value,
 }
 
-updated_settings = cfg.readConfig('config.cfg')
+updated_settings = cfg.read_config('config.cfg')
 
 cfg.update_dictionaries(updated_settings, [CONSTS])
 
