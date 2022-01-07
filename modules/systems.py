@@ -1,20 +1,36 @@
 
 import math
-import sys, os
 
 if __name__ == '__main__':
-    sys.path.insert(0, os.path.abspath('../constants'))
+    import const
+    import spacemath
+    from Body import Body
 else:
-    sys.path.insert(0, os.path.abspath('./constants'))
-
-import const
+    from modules import const
+    from modules import spacemath
+    from modules.Body import Body
 
 class Object:
 
-    def __init__(self, name, color='#1ecaee', mass=1, radius=1, a=None, e=None, i=None, lon_AN=None, lon_Pe=None, ML=None, Epoch=None):
+    def __init__(
+            self,
+            name,
+            color='#1ecaee',
+            mass=1,
+            radius=1,
+            a=None,
+            e=None,
+            i=None,
+            lon_AN=None,
+            lon_Pe=None,
+            ML=None,
+            Epoch=None,
+            tags=None,
+        ):
 
         self.name = name
         self.color = color
+        self.tags = tags
         
         self.mass = mass
         self.radius = radius
@@ -22,12 +38,12 @@ class Object:
         self.volume = 4*math.pi*self.radius**3/3
         self.density = self.mass/self.volume
         
-        self.a = a
-        self.e = e
-        self.i = i
-        self.lon_AN = lon_AN
-        self.lon_Pe = lon_Pe
-        self.ML = ML
+        self.semi_major_axis = self.a = a
+        self.eccentricity = self.e = e
+        self.inclination = self.i = i
+        self.longitude_ascending_node = self.lon_AN = lon_AN
+        self.longitude_periapsis = self.lon_Pe = lon_Pe
+        self.mean_longitude = self.ML = ML
 
         if Epoch == 'J2000' or Epoch == None:
             self.Epoch = 30*365.25*24*60*60
@@ -41,16 +57,273 @@ class System:
         self.parent = parent
         self.planets = planets
 
+def load_system(environment, system, grandparent_position, grandparent_velocity, grandparent=None):
+    print(f"Loading {system.name}")
+    parent = system.parent
+
+    if grandparent == None:
+        parent_position = grandparent_position
+        parent_velocity = grandparent_velocity
+
+        parent_body = Body(
+            parent.name,
+            parent.color,
+            parent.mass,
+            parent.radius,
+            parent_position,
+            parent_velocity,
+        )
+
+    else:
+        parent_position, parent_velocity = spacemath.kep_to_cart(
+            const.G*grandparent.mass,
+            parent.a,
+            parent.e,
+            math.radians(parent.i),
+            math.radians(parent.lon_AN),
+            math.radians(parent.lon_AN),
+            math.radians(parent.ML),
+            environment.time,
+            parent.Epoch,
+        )
+
+        parent_position += grandparent_position
+        parent_velocity += grandparent_velocity
+
+        parent_body = Body(
+            parent.name,
+            parent.color,
+            parent.mass,
+            parent.radius,
+            parent_position,
+            parent_velocity,
+        )
+
+    environment.object_dict[system.parent.name] = parent_body
+
+    for planet in system.planets:
+        if isinstance(planet, System):
+            # Sub-system
+            sub_system = planet
+            load_system(environment, sub_system, parent_position, parent_velocity, parent)
+
+        else:
+            # Planet
+            body_position, body_velocity = spacemath.kep_to_cart(
+                const.G*parent.mass,
+                planet.a,
+                planet.e,
+                math.radians(planet.i),
+                math.radians(planet.lon_AN),
+                math.radians(planet.lon_Pe),
+                math.radians(planet.ML),
+                environment.time,
+                planet.Epoch,
+            )
+
+            body = Body(
+                planet.name,
+                planet.color,
+                planet.mass,
+                planet.radius,
+
+                body_position + parent_position,
+                body_velocity + parent_velocity
+            )
+            environment.object_dict[planet.name] = body
+
+
+earth_system = System(
+
+    'Earth System',
+
+    Object(
+        'Earth',
+        '#336eee',
+        5.972*10**24,
+        6.371*10**6,
+
+        1.00000011*const.AU,
+        0.01671022,
+        0.00005,
+        -11.26064,
+        102.94719,
+        100.46435,
+
+        tags=['planet'],
+    ),
+    
+    [
+        Object(
+            'Moon',
+            '#b0c0f0',
+            7.346*10**22,
+            1.7374*10**6,
+
+            3.844*10**8,
+            0.0549,
+            5.145,
+            0,
+            0,
+            0,
+
+            tags=['moon'],
+        )
+    ]
+)
+
+mars_system = System(
+
+    'Mars System',
+
+    Object(
+        'Mars',
+        '#dd6030',
+        6.4171*10**23,
+        3.3895*10**6,
+
+        1.52366231*const.AU,
+        0.09341233,
+        1.85061,
+        49.57854,
+        336.04084,
+        355.45332,
+    ),
+
+    [
+        Object(
+            'Phobos',
+            '#998f88',
+            1.06*10**16,
+            1.30*10**4,
+
+            9.378*10**6,
+            0.0151,
+            1.08,
+            0,
+            0,
+            0,
+
+            tags=['moon']
+        ),
+
+        Object(
+            'Deimos',
+            '#aa9988',
+            2.4*10**15,
+            7.8*10**3,
+
+            2.3459*10**7,
+            0.0005,
+            1.79,
+            0,
+            0,
+            0,
+
+            tags=['moon']
+        ),
+    ],
+)
+
+jupiter_system = System(
+
+    'Jupiter System',
+
+    Object(
+        'Jupiter',
+        '#cfac80',
+        1.89813*10**27,
+        7.1492*10**7,
+
+        5.20336301*const.AU,
+        0.04839266,
+        1.30530,
+        100.55615,
+        14.75385,
+        34.40438,
+
+        tags=['planet', 'gas'],
+    ),
+
+    [
+        Object(
+            'Io',
+            '#ccc240',
+            8.93*10**22,
+            3.643*10**6/2,
+
+            4.22*10**8,
+            0.004,
+            0.04,
+            0,
+            0,
+            0,
+            
+            tags=['moon'],
+        ),
+
+        Object(
+            'Europa',
+            '#81582c',
+            4.80*10**22,
+            3.122*10**6/2,
+
+            6.71*10**8,
+            0.009,
+            0.47,
+            0,
+            0,
+            0,
+
+            tags=['moon']
+        ),
+
+        Object(
+            'Ganymede',
+            '#92837a',
+            1.482*10**23,
+            5.262*10**6/2,
+
+            1.070*10**9,
+            0.001,
+            0.18,
+            0,
+            0,
+            0,
+
+            tags=['moon']
+        ),
+
+        Object(
+            'Callisto',
+            '#3e5460',
+            1.076*10**23,
+            4.821*10**6/2,
+            
+            1.883*10**9,
+            0.007,
+            0.19,
+            0,
+            0,
+            0,
+
+            tags=['moon']
+        ),
+    ]
+)
+
 solar_system = System(
 
     "Solar System",
     
     Object(
-        'Sol',
+        'Sun',
         '#eeff55',
         1.98847*10**30,
         6.9634*10**8,
-        ),
+        
+        tags=['star'],
+    ),
 
     [
 
@@ -66,7 +339,9 @@ solar_system = System(
             48.33167,
             77.45645,
             252.25084,
-            ),
+
+            tags=['planet'],
+        ),
 
         Object(
             'Venus',
@@ -80,49 +355,16 @@ solar_system = System(
             76.68069,
             131.53298,
             181.97973,
-            ),
+
+            tags=['planet'],
+        ),
         
-        Object(
-            'Earth',
-            '#336eee',
-            5.972*10**24,
-            6.371*10**6,
+        earth_system,
 
-            1.00000011*const.AU,
-            0.01671022,
-            0.00005,
-            -11.26064,
-            102.94719,
-            100.46435,
-            ),
+        # Ignore Mars' moons (Only take the parent, and leave two orphans in idle limbo)
+        mars_system.parent,
 
-        Object(
-            'Mars',
-            '#dd6030',
-            6.4171*10**23,
-            3.3895*10**6,
-
-            1.52366231*const.AU,
-            0.09341233,
-            1.85061,
-            49.57854,
-            336.04084,
-            355.45332,
-            ),
-
-        Object(
-            'Jupiter',
-            '#cfac80',
-            1.89813*10**27,
-            7.1492*10**7,
-
-            5.20336301*const.AU,
-            0.04839266,
-            1.30530,
-            100.55615,
-            14.75385,
-            34.40438,
-            ),
+        jupiter_system,
 
         Object(
             'Saturn',
@@ -136,7 +378,7 @@ solar_system = System(
             113.71504,
             92.43194,
             49.94434,
-            ),
+        ),
 
         Object(
             'Uranus',
@@ -150,7 +392,7 @@ solar_system = System(
             74.22988,
             170.96424,
             313.23218,
-            ),
+        ),
 
         Object(
             'Neptune',
@@ -164,7 +406,7 @@ solar_system = System(
             131.72169,
             44.97135,
             304.88003,
-            ),
+        ),
     ]
     
 )
@@ -180,7 +422,7 @@ sagittarius = System(
         '#ff9900',
         8.2601*10**36,
         2.2*10**8,
-        ),
+    ),
 
     [
         Object(
@@ -196,7 +438,7 @@ sagittarius = System(
             122.30,
             342.04+122.30,
             2001.800,
-            ),
+        ),
 
         Object(
             'S2',
@@ -211,7 +453,7 @@ sagittarius = System(
             66.25,
             228.07+66.25,
             2018.379
-            ),
+        ),
 
         Object(
             'S8',
@@ -226,7 +468,7 @@ sagittarius = System(
             346.70,
             315.43+346.70,
             1983.640
-            ),
+        ),
 
     ]
 

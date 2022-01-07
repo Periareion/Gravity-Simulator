@@ -1,6 +1,4 @@
 
-import os
-
 print_format = "{k} has been set to {v}"
 
 replace_dict = {
@@ -56,7 +54,6 @@ def readConfig(config_file_name):
         elif len(contents) == 2:
             key, value = contents
             config_dict[key] = value
-            print(print_format.format(k=key,v=value))
 
     return config_dict
 
@@ -68,3 +65,4 @@ def update_dictionaries(updated_settings, updatable_dictionaries):
 
             if key in dictionary.keys():
                 dictionary.update({key: value})
+                print(print_format.format(k=key,v=value))
