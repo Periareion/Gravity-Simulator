@@ -1,11 +1,13 @@
 
 import math
 
-if __name__ == '__main__':
+import numpy as np
+
+try:
     import const
     import spacemath
     from ObjectClasses import Body
-else:
+except ModuleNotFoundError:
     from modules import const
     from modules import spacemath
     from modules.ObjectClasses import Body
@@ -50,16 +52,9 @@ def load_system(environment, system, grandparent_position, grandparent_velocity,
         parent_position += grandparent_position
         parent_velocity += grandparent_velocity
 
-        parent_body = Body(
-            parent.name,
-            parent.color,
-            parent.mass,
-            parent.radius,
-            parent_position,
-            parent_velocity,
-        )
+    momentum_sum = np.array([0,0,0], dtype=np.float64)
 
-    environment.object_dict[system.parent.name] = parent_body
+    bodies = []
 
     for planet in system.planets:
         if isinstance(planet, System):
@@ -81,6 +76,9 @@ def load_system(environment, system, grandparent_position, grandparent_velocity,
                 planet.Epoch,
             )
 
+            #if 'moon' in planet.tags:
+            #    planet.mass = 1
+            
             body = Body(
                 planet.name,
                 planet.color,
@@ -88,8 +86,23 @@ def load_system(environment, system, grandparent_position, grandparent_velocity,
                 planet.radius,
 
                 body_position + parent_position,
-                body_velocity + parent_velocity
+                body_velocity + parent_velocity,
+                
+                planet.tags,
             )
-            environment.object_dict[planet.name] = body
 
+            momentum_sum = momentum_sum + planet.mass*np.array(body_velocity, dtype=np.float64)
 
+            environment.object_dict[body.name] = body
+        
+    parent_body = Body(
+            parent.name,
+            parent.color,
+            parent.mass,
+            parent.radius,
+            parent_position,
+            parent_velocity - momentum_sum/parent.mass,
+        )
+    print(parent.name, momentum_sum/parent.mass)
+
+    environment.object_dict[system.parent.name] = parent_body

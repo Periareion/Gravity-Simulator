@@ -2,9 +2,9 @@ from astropy.constants import G, au
 
 import os
 
-if __name__ == '__main__':
+try:
     import configurator as cfg
-else:
+except ModuleNotFoundError:
     from modules import configurator as cfg
 
 os.path.abspath(os.path.join('..', os.getcwd()))

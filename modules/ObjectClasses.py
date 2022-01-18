@@ -3,6 +3,11 @@ import math
 import pygame
 import numpy as np
 
+try:
+    import const
+except ModuleNotFoundError:
+    from modules import const
+
 class RawObject:
 
     def __init__(
@@ -53,22 +58,20 @@ class Body:
             radius=0.1,
             position=None,
             velocity=None,
+            tags=[],
             ):
 
         self.name = name
         self.color = pygame.Color(color)
         self.mass = mass
         self.radius = radius
+        self.tags = tags.copy()
 
         self.position = np.array(position, dtype=np.float64)
         self.velocity = np.array(velocity, dtype=np.float64)
         self.acceleration = np.array([0,0,0], dtype=np.float64)
 
-        self.new_position = self.position
-        self.new_velocity = self.velocity
-        self.new_acceleration = self.acceleration
-
-        self.path_points = [self.position]
+        self.path_points = [self.position.copy(), self.position.copy()]
         
         self.darker_color = pygame.Color(*(int(0.5*x) for x in [self.color.r, self.color.g, self.color.b]))
         self.mouse_hovering = False
@@ -78,39 +81,55 @@ class Body:
         # meters / meters per pixel = pixels
         size = self.radius/scale
         
-        size *= rescale_factor
-
-        #size = (self.mass)**(1/20)*200000000/visual_settings['scale']
+        if 'planet' in self.tags:
+            size *= rescale_factor
             
         if size < 1:
             size = 1
             
         return size
 
-    def update_position(self, delta_time, fps):
-
-        self.new_position = self.position + self.velocity * delta_time / fps + self.acceleration*(0.5*(delta_time/fps)**2)
-
-    def update_acceleration(self, universe, G, removed_bodies):
+    def update_acceleration(self, universe, G):
         
-        self.new_acceleration = np.array([0,0,0], dtype=np.float64)
+        self.acceleration = np.array([0,0,0], dtype=np.float64)
         
         for other in universe.objects:
-            dist = other.position - self.new_position
-            dist_norm = math.sqrt(sum((dim**2 for dim in dist))+universe.softening**2)
+
             if self == other:
                 continue
-            elif dist_norm < self.radius + other.radius and ((self.name not in removed_bodies) and (other.name not in removed_bodies)):
-                smaller, larger = sorted((self, other), key=lambda x: x.mass)
-                print(f"{smaller.name} collided with {larger.name}")
-                print(universe.object_dict[larger.name].mass)
-                larger.mass += smaller.mass
-                removed_bodies.append(smaller.name)
-                print(universe.object_dict[larger.name].mass)
-                continue
+
+            dist = other.position - self.position
+            dist_norm = math.sqrt(sum((dim**2 for dim in dist))+universe.softening**2)
             
-            self.new_acceleration += G * other.mass * dist / dist_norm**3
+            self.acceleration += G * other.mass * dist / dist_norm**3
 
     def update_velocity(self, delta_time, fps):
         
-        self.new_velocity = self.velocity + (self.new_acceleration + self.acceleration) * 0.5 * delta_time / fps
+        self.velocity = self.velocity + self.acceleration * delta_time / fps
+
+    def update_position(self, delta_time, fps):
+
+        self.position = self.position + self.velocity * delta_time / fps #= self.position + self.velocity * delta_time / fps + self.acceleration*(0.5*(delta_time/fps)**2)
+        
+    def shatter(self, n, removed_bodies, new_body_dict):
+        angle_increment = 2*math.pi/n
+        internal_angle = math.pi-2*math.pi/n
+        mass = self.mass/n
+
+        removed_bodies.append(self.name)
+        fragment_radius = self.radius*0.4
+        distance_from_center = fragment_radius/math.cos(internal_angle/2)
+
+        for k in range(n):
+            
+            angle = angle_increment*k
+            normalized_direction = np.array([math.cos(angle), math.sin(angle), 0])
+            name = f"{self.name} {k}"
+            new_body_dict[name] = Body(
+                name=name,
+                color=self.color,
+                mass=mass,
+                radius=fragment_radius,
+                position=self.position+normalized_direction*distance_from_center,
+                velocity=self.velocity+(normalized_direction)*50000*math.sqrt(const.G*(n/2-1)*mass**0.6/distance_from_center),
+            )

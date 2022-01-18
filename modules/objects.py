@@ -30,7 +30,7 @@ Mercury = Object(
     77.45645,
     252.25084,
 
-    tags=['planet'],
+    tags=[],
 )
 
 Venus = Object(
@@ -46,7 +46,7 @@ Venus = Object(
     131.53298,
     181.97973,
 
-    tags=['planet'],
+    tags=['atmosphere'],
 )
 
 Earth = Object(
@@ -62,7 +62,7 @@ Earth = Object(
     102.94719,
     100.46435,
 
-    tags=['planet'],
+    tags=['atmosphere'],
 )
 
 Moon = Object(
@@ -94,7 +94,7 @@ LRO = Object(
     0,
     0,
 
-    tags=['probe']
+    tags=['probe'],
 )
 
 Mars = Object(
@@ -109,6 +109,8 @@ Mars = Object(
     49.57854,
     336.04084,
     355.45332,
+
+    tags=['atmosphere'],
 )
 
 Phobos = Object(
@@ -124,7 +126,7 @@ Phobos = Object(
     0,
     0,
 
-    tags=['moon']
+    tags=['moon'],
 )
 
 Deimos = Object(
@@ -140,7 +142,7 @@ Deimos = Object(
     0,
     0,
 
-    tags=['moon']
+    tags=['moon'],
 )
 
 Jupiter = Object(
@@ -156,7 +158,7 @@ Jupiter = Object(
     14.75385,
     34.40438,
 
-    tags=['planet', 'gas'],
+    tags=['gas'],
 )
 
 Io = Object(
@@ -188,7 +190,7 @@ Europa = Object(
     0,
     0,
 
-    tags=['moon']
+    tags=['moon'],
 )
 
 Ganymede = Object(
@@ -204,7 +206,7 @@ Ganymede = Object(
     0,
     0,
 
-    tags=['moon']
+    tags=['moon'],
 )
 
 Callisto = Object(
@@ -220,7 +222,7 @@ Callisto = Object(
     0,
     0,
 
-    tags=['moon']
+    tags=['moon'],
 )
 
 Saturn = Object(
@@ -235,6 +237,56 @@ Saturn = Object(
     113.71504,
     92.43194,
     49.94434,
+
+    tags=['gas'],
+)
+
+Rhea = Object(
+    'Rhea',
+    '#999999',
+    2.31*10**21,
+    7.63*10**5,
+
+    5.2704*10**8,
+    0.0010,
+    0.35,
+    0,
+    0,
+    0,
+
+    tags=['moon']
+)
+
+Titan = Object(
+    'Titan',
+    '#aa8f59',
+    1.3455*10**23,
+    2.575*10**6,
+
+    1.22183*10**9,
+    0.0292,
+    0.33,
+    0,
+    0,
+    0,
+
+    tags=['moon', 'atmosphere'],
+)
+
+Iapetus = Object(
+    'Iapetus',
+    '#dddacc',
+    1.81*10**21,
+    7.46*10**5,
+
+    3.5613*10**9,
+    0.0283,
+    14.72,
+    0,
+    0,
+    0,
+
+    tags=['moon']
 )
 
 Uranus = Object(
@@ -249,6 +301,8 @@ Uranus = Object(
     74.22988,
     170.96424,
     313.23218,
+
+    tags=['gas'],
 )
 
 Neptune = Object(
@@ -263,4 +317,6 @@ Neptune = Object(
     131.72169,
     44.97135,
     304.88003,
+
+    tags=['gas'],
 )

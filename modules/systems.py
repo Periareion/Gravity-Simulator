@@ -11,21 +11,64 @@ else:
     from modules.ObjectClasses import RawObject as Object
     from modules.objects import *
 
+test_system = System(
+    'Test',
+
+    Sun,
+
+    [
+        System(
+            'Planet with moon',
+            
+            Object(
+                'Planet',
+                '#cc0000',
+                10**25,
+                10**7,
+
+                1*const.AU,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ),
+            
+            [
+                Object(
+                    'Moon',
+                    '#0066dd',
+                    10**23,
+                    10**6,
+                    
+                    2*10**8,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+            ]
+        )
+    ]
+)
+
 earth_system = System(
     'Earth System',
 
     Earth,
 
     [
-        System(
-            'Lunar System',
-
-            Moon,
-
-            [
-                #LRO
-            ]
-        )
+        Moon
+        #System(
+        #    'Lunar System',
+#
+        #    Moon,
+#
+        #    [
+        #        #LRO
+        #    ]
+        #)
     ]
 )
 
@@ -57,6 +100,20 @@ jupiter_system = System(
     ]
 )
 
+saturn_system = System(
+    'Saturn System',
+
+    Saturn,
+
+    [
+        Rhea,
+
+        Titan,
+
+        Iapetus,
+    ]
+)
+
 solar_system = System(
     'Solar System',
 
@@ -73,7 +130,7 @@ solar_system = System(
 
         jupiter_system,
 
-        Saturn,
+        saturn_system,
 
         Uranus,
 

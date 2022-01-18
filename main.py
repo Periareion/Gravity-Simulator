@@ -5,7 +5,7 @@ import time
 import datetime
 import math
 
-sys.path.append('.\assets')
+sys.path.append('.\\assets')
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 
 import pygame
@@ -15,11 +15,13 @@ import numpy as np
 
 from modules import configurator as cfg
 from modules import const
+from modules import systems
 
 WIDTH, HEIGHT = 1080, 720
 
 settings = {
-    'TARGET_SIM_FPS': 700,
+    'system': systems.earth_system,
+    'TARGET_SIM_FPS': 600,
     'paused': False,
     'simulation_start_time': time.time(),
     'delta_time': 200000,
@@ -29,6 +31,8 @@ settings = {
 visual_settings = {
     'FPS': 60,
     'scale': const.AU / 100,
+    'focus': None,
+    'render_paths': True,
     'show_center_of_mass': False,
     'display_names': True,
     'rescale_factor': 500,
@@ -46,37 +50,8 @@ COLORS = {
     'FADE': pygame.Color(255,255,255,240),
 }
 
-
 settings['TRUE_FPS'] = settings['TARGET_SIM_FPS']
 
-updated_settings = cfg.read_config('config.cfg')
-cfg.update_dictionaries(updated_settings, [settings, visual_settings, COLORS])
-
-pygame.font.init()
-Courier_New = pygame.font.SysFont('Courier New', 16)
-Consolas = pygame.font.SysFont('Consolas', 16)
-Consolas_small = pygame.font.SysFont('Consolas', 14)
-
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('Gravity Simulator')
-pygame.display.set_icon(pygame.image.load('assets\\icon.png'))
-
-clock = pygame.time.Clock()
-
-path_surface_margin = np.array((10, 10), dtype=np.int32)
-path_surface_size = (WIDTH+path_surface_margin[0]*2, HEIGHT+path_surface_margin[1]*2)
-zoom_in_WIDTH, zoom_in_HEIGHT = int(path_surface_size[0]*visual_settings['zoom_increment_factor']), int(path_surface_size[1]*visual_settings['zoom_increment_factor'])
-zoom_out_WIDTH, zoom_out_HEIGHT = int(path_surface_size[0]/visual_settings['zoom_increment_factor']), int(path_surface_size[1]/visual_settings['zoom_increment_factor'])
-
-if path_surface_size[0] * path_surface_size[1] > 1500*1500:
-    warnings.warn("Path surface margin is high, which may cause lag spikes.")
-
-if WIDTH > 1920 or HEIGHT > 1080:
-    warnings.warn("Screen dimensions may be too high.")
-
-gui_background = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA, 32)
-gui_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA, 32)
-empty_gui_surface = gui_surface.copy()
 
 def offset_surface(surface, offset=(0,0)):
     new_surface = surface.copy()
@@ -86,7 +61,7 @@ def offset_surface(surface, offset=(0,0)):
 
 class Environment:
 
-    def __init__(self, name, object_dict={}, start_time=0, delta_time=settings['delta_time'], softening=9000, G=6.6743*10**-11):
+    def __init__(self, name, object_dict={}, start_time=0, delta_time=settings['delta_time'], softening=5000, G=6.6743*10**-11):
         self.name=name
         self.object_dict = object_dict
         self.time = start_time
@@ -102,8 +77,6 @@ class Environment:
     def objects(self):
         return self.object_dict.values()
 
-universe = Environment('Universe', start_time=settings['simulation_start_time']-1800)
-
 from modules.ObjectClasses import Body
 
 from modules import systems_core
@@ -111,48 +84,129 @@ from modules import systems_core
 def environment_setup(environment, system):
     environment.name = system.name
 
-    visual_settings['scale'] = system.parent.radius/5
+    visual_settings['scale'] = system.parent.radius/2
 
     systems_core.load_system(environment, system, np.array([0,0,0], dtype=np.float64), np.array([0,0,0], dtype=np.float64))
 
-from modules import systems
 
-environment_setup(universe, systems.solar_system)
+universe = Environment('Universe', start_time=settings['simulation_start_time'])
 
+environment_setup(universe, settings['system'])
 
+def get_focus_position():
+    focus = visual_settings['focus']
+    
+    if focus == None:
+        return np.array([0,0], dtype=np.float64)
+    
+    elif isinstance(focus, Body):
+        return focus.position[:-1]
 
-"""
-Here's the main loop.
-It's huge... I know.
-"""
+def draw_body(body, surf, position):
+    try:
+        body_screen_position = position
+        body_screen_position = int(body_screen_position[0]), int(body_screen_position[1])
+        body_screen_size = int(body.size(visual_settings['scale'], visual_settings['rescale_factor']))
+
+        gfxdraw.aacircle(surf, *body_screen_position, body_screen_size, body.color)
+        gfxdraw.filled_circle(surf, *body_screen_position, body_screen_size, body.color)
+    except:
+        pass
+
+def draw_body_info(body, surf, name_font, info_font, position):
+    try:
+        body_screen_position = position
+        body_screen_position = int(body_screen_position[0]), int(body_screen_position[1])
+        body_screen_size = int(body.size(visual_settings['scale'], visual_settings['rescale_factor']))
+
+        color = COLORS['HOVERING']
+
+        if body.selected:
+            color = body.color
+            if body.mouse_hovering:
+                color = COLORS['SELECTED']
+
+        if body.mouse_hovering or body.selected:
+            color = pygame.Color(color)
+            gfxdraw.aacircle(surf, *((int(x) for x in body_screen_position)), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
+            gfxdraw.filled_circle(surf, *((int(x) for x in body_screen_position)), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
+            gfxdraw.filled_circle(surf, *((int(x) for x in body_screen_position)), int(body_screen_size)+visual_settings['hollow_segment_length'], COLORS['EMPTY'])
+            pygame.draw.line(surf, COLORS['EMPTY'],
+                            (body_screen_position[0]-(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2), body_screen_position[1]),
+                            (body_screen_position[0]+(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2), body_screen_position[1]),
+                            int(body_screen_size/2)+3)
+            pygame.draw.line(surf, COLORS['EMPTY'],
+                            (body_screen_position[0], body_screen_position[1]-(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2)),
+                            (body_screen_position[0], body_screen_position[1]+(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2)),
+                            int(body_screen_size/2)+3)
+
+            if visual_settings['display_names']:
+                pygame.draw.line(surf, color,
+                                (body_screen_position[0]+int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), body_screen_position[1]),
+                                (body_screen_position[0]+int(body_screen_size)+60, body_screen_position[1]),
+                                )
+                surf.blit(name_font.render(body.name, True, color), (body_screen_position[0]+int(body_screen_size)+66, body_screen_position[1]-7))
+
+                body_info = [
+                    f"Mass: {np.format_float_scientific(body.mass, 4)}",
+                    f"Radius: {np.format_float_scientific(body.radius, 4)}",
+                ]
+
+                for n, text in enumerate(body_info):
+                    surf.blit(info_font.render(text, True, color), (body_screen_position[0]+int(body_screen_size)+70, body_screen_position[1]+9+15*n))
+    except:
+        pass
+
+def draw_path_line(body, surf, pos1, pos2):
+    pygame.draw.aaline(surf, body.darker_color, pos1, pos2)
+
+def redraw_path(body, surf, points):
+    body.path_points.append(body.position.copy())
+    pygame.draw.aalines(surf, body.darker_color, False, points)
+
+def purge_dict(dict, purgees):
+    for key in purgees:
+        del dict[key]
+
 
 def main():
-    
+
     camera_offset = np.array([0,0], dtype=np.float64)
-    
-    def screen_position(true_position, offset=(0,0)):
-        return ((true_position[0]) / visual_settings['scale'] + WIDTH/2 + camera_offset[0] + offset[0], \
-            -(true_position[1]) / visual_settings['scale'] + HEIGHT/2 + camera_offset[1] + offset[1])
 
-    def true_position(screen_position, offset=(0,0)):
-        return ((screen_position[0]-WIDTH/2-camera_offset[0]-offset[1])*visual_settings['scale'], \
-            (screen_position[1]-HEIGHT/2-camera_offset[1]-offset[1])*visual_settings['scale'], 0)
+    def screen_position(true_position, offset=(0,0), focus_position=(0,0)):
+        return ((true_position[0] - focus_position[0]) / visual_settings['scale'] + WIDTH/2 + camera_offset[0] + offset[0], \
+            -(true_position[1] - focus_position[1]) / visual_settings['scale'] + HEIGHT/2 + camera_offset[1] + offset[1])
 
-    def draw_body(body):
-        try:
-            screen_pos = screen_position(body.position)
-            screen_pos = int(screen_pos[0]), int(screen_pos[1])
-            gfxdraw.aacircle(screen, *screen_pos, int(body.size(visual_settings['scale'], visual_settings['rescale_factor'])), body.color)
-            gfxdraw.filled_circle(screen, *screen_pos, int(body.size(visual_settings['scale'], visual_settings['rescale_factor'])), body.color)
-        except:
-            pass
+    def true_position(screen_position, offset=(0,0), focus_position=(0,0)):
+        return ((screen_position[0]-WIDTH/2-camera_offset[0]-offset[1])*visual_settings['scale'] + focus_position[0], \
+            (screen_position[1]-HEIGHT/2-camera_offset[1]-offset[1])*visual_settings['scale'], + focus_position[1], 0)
+
+    updated_settings = cfg.read_config('config.cfg')
+    cfg.update_dictionaries(updated_settings, [settings, visual_settings, COLORS])
+
+    pygame.font.init()
+    Courier_New = pygame.font.SysFont('Courier New', 16)
+    Consolas = pygame.font.SysFont('Consolas', 16)
+    Consolas_small = pygame.font.SysFont('Consolas', 14)
+
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption('Gravity Simulator')
+    pygame.display.set_icon(pygame.image.load('assets\\icon.png'))
+
+    clock = pygame.time.Clock()
+
+    if WIDTH > 1920 or HEIGHT > 1080:
+        warnings.warn("Screen dimensions may be too high.")
+
+    gui_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
 
     was_left_clicked = False
     hovering = False
 
-    path_surface = pygame.Surface((WIDTH+path_surface_margin[0]*2, HEIGHT+path_surface_margin[1]*2), pygame.SRCALPHA, 32)
-    
-    fade_timer = 0  
+    path_surface_size = (WIDTH, HEIGHT)
+    path_surface = pygame.Surface(path_surface_size, pygame.SRCALPHA)
+
+    k = 0
 
     # System to check if a key was just pressed
     last_key_state = pygame.key.get_pressed()
@@ -161,31 +215,62 @@ def main():
 
     tracked_keys = {
         pygame.K_x: False,
-        }
+    }
 
-    active = True
-    while active:
+    running = True
+    while running:
+
+        focus_position = get_focus_position()
         
         if not settings['paused']:
-        
-            removed_bodies = []
-            
-            for body in universe.objects:
-                body.update_position(settings['delta_time'], settings['TARGET_SIM_FPS'])
-                body.update_acceleration(universe, const.G, removed_bodies)
-                body.update_velocity(settings['delta_time'], settings['TARGET_SIM_FPS'])
-            
-            for body in removed_bodies:
-                del universe.object_dict[body]
             
             for body in universe.objects:
 
-                pygame.draw.aaline(path_surface, body.darker_color, screen_position(body.position, path_surface_margin), screen_position(body.new_position, path_surface_margin))
+                body.update_acceleration(universe, const.G)
+                body.update_velocity(settings['delta_time'], settings['TARGET_SIM_FPS'])
+
+                body.old_position = body.position.copy()
+                body.update_position(settings['delta_time'], settings['TARGET_SIM_FPS'])
+                body.new_position = body.position.copy()
+            
+            removed_bodies = []
+
+            for body in universe.objects:
+
+                if body in removed_bodies:
+                    continue
+
+                for body2 in universe.objects:
+
+                    if body2 in removed_bodies or body == body2:
+                        continue
+
+                    dist = body2.position - body.position
+                    dist_norm = math.sqrt(sum((dim**2 for dim in dist))+universe.softening**2)
+
+                    if dist_norm < body.radius + body2.radius and ((body.name not in removed_bodies) and (body2.name not in removed_bodies)):
+                        smaller, larger = sorted((body, body2), key=lambda x: x.mass)
+
+                        print(f"{smaller.name} collided with {larger.name}")
+
+                        larger.mass += smaller.mass
+                        removed_bodies.append(smaller.name)
+
+                        larger.velocity = (larger.mass*larger.velocity + smaller.mass*smaller.velocity) / larger.mass
+            
+            purge_dict(universe.object_dict, removed_bodies)
+
+            k += 1
+            for body in universe.objects:
                 
-                body.position = body.new_position
-                body.velocity = body.new_velocity
-                body.acceleration = body.new_acceleration
-        
+                if visual_settings['render_paths']:
+                    draw_path_line(body, path_surface, screen_position(body.old_position), screen_position(body.new_position))
+
+                if not k % 20:
+                    body.path_points.append(body.new_position)
+                    while len(body.path_points) > 500*15/math.sqrt(len(universe.objects)):
+                        del body.path_points[0]
+
             universe.time += settings['delta_time'] / settings['TARGET_SIM_FPS']
 
         clock.tick(settings['TARGET_SIM_FPS'])
@@ -197,20 +282,9 @@ def main():
         if current_draw_time-last_draw_time < 1/visual_settings['FPS']:
             continue
         last_draw_time = current_draw_time
-
-
-
-
-
-#        if fade_timer > int(100000000/settings['delta_time']):
-#            fade_timer = 0
-#            path_surface.fill(COLORS['FADE'], special_flags=pygame.BLEND_RGBA_MULT)
-#        fade_timer += 1
         
         mouse_pos = pygame.mouse.get_pos()
-
         mouse_state = pygame.mouse.get_pressed()
-        
         current_key_state = pygame.key.get_pressed()
 
         for key in tracked_keys.keys():
@@ -218,15 +292,14 @@ def main():
                 # Pressed last frame
                 tracked_keys[key] = False
             elif current_key_state[key]:
-                # Pressed this from and not last frame.
+                # Pressed this and not last frame.
                 tracked_keys[key] = True
 
         last_key_state = current_key_state
                 
         for event in pygame.event.get():
-            
             if event.type == pygame.QUIT:
-                active = False
+                running = False
                 
             elif event.type == pygame.KEYDOWN:
                 
@@ -235,6 +308,7 @@ def main():
 
                 elif event.key == pygame.K_LEFT:
                     settings['delta_time'] = math.copysign(settings['delta_time'],-1)
+
                 elif event.key == pygame.K_RIGHT:
                     settings['delta_time'] = math.copysign(settings['delta_time'],1)
 
@@ -243,11 +317,14 @@ def main():
 
                 elif event.key == pygame.K_c:
                     path_surface.fill(COLORS['EMPTY'])
+                
+                elif event.key == pygame.K_p:
+                    visual_settings['render_paths'] = not visual_settings['render_paths']
 
                 elif event.key == pygame.K_v:
                     contents = cfg.read_line(input("Manually redefine a variable: "))
                     if contents == 'stop':
-                        active = False
+                        running = False
                     elif contents == None:
                         pass
                     elif len(contents) == 2:
@@ -258,26 +335,29 @@ def main():
                 
                 if event.y == 1:
                     # Zoom in
+                    
                     visual_settings['scale'] /= visual_settings['zoom_increment_factor']
                     
-                    offset = np.array(true_position(mouse_pos)[:-1], dtype=np.float64)/visual_settings['scale']*(1-visual_settings['zoom_increment_factor'])
+                    offset = (np.array(true_position(mouse_pos)[0:2], dtype=np.float64)/visual_settings['scale']*(1-visual_settings['zoom_increment_factor']))
                     camera_offset += offset
 
-                    temp = pygame.transform.smoothscale(path_surface, (zoom_in_WIDTH, zoom_in_HEIGHT))
-                    path_surface.fill(COLORS['EMPTY'])
-                    path_surface.blit(temp, ((path_surface_size[0]-zoom_in_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-visual_settings['zoom_increment_factor'])-1, (path_surface_size[1]-zoom_in_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-visual_settings['zoom_increment_factor'])-1))
-                    path_surface.fill(COLORS['FADE'], special_flags=pygame.BLEND_RGBA_MULT)
+                    if visual_settings['render_paths']:
+                        path_surface.fill(COLORS['EMPTY'])
+                        for body in universe.objects:
+                            redraw_path(body, path_surface, [screen_position(pos) for pos in body.path_points])
 
                 elif event.y == -1:
                     # Zoom out
+                    
                     visual_settings['scale'] *= visual_settings['zoom_increment_factor']
                     
-                    offset = np.array(true_position(mouse_pos)[:-1])/visual_settings['scale']*(1-1/visual_settings['zoom_increment_factor'])
+                    offset = (np.array(true_position(mouse_pos)[0:2], dtype=np.float64)/visual_settings['scale']*(1-1/visual_settings['zoom_increment_factor']))
                     camera_offset += offset
 
-                    temp = pygame.transform.smoothscale(path_surface, (zoom_out_WIDTH, zoom_out_HEIGHT))
-                    path_surface.fill(COLORS['EMPTY'])
-                    path_surface.blit(temp, ((path_surface_size[0]-zoom_out_WIDTH)/2+(mouse_pos[0]-WIDTH/2)*(1-1/visual_settings['zoom_increment_factor']), (path_surface_size[1]-zoom_out_HEIGHT)/2+(mouse_pos[1]-HEIGHT/2)*(1-1/visual_settings['zoom_increment_factor'])))
+                    if visual_settings['render_paths']:
+                        path_surface.fill(COLORS['EMPTY'])
+                        for body in universe.objects:
+                            redraw_path(body, path_surface, [screen_position(pos) for pos in body.path_points])
 
         mouse_relative_position = pygame.mouse.get_rel()
         
@@ -291,16 +371,20 @@ def main():
             settings['delta_time'] /= 1.02
         
         screen.fill(COLORS['BACKGROUND'])
-        screen.blit(path_surface, -path_surface_margin)
-        gui_surface = empty_gui_surface.copy() #gui_surface.fill(COLORS['EMPTY'])
 
+        if visual_settings['render_paths']:
+            screen.blit(path_surface, (0,0))
+
+        gui_surface.fill(COLORS['EMPTY'])
+
+        # Need seperate because they're running at different paces
         removed_bodies = []
-        new_body_dict = {}
+        new_bodies = {}
         
         # Mouse-body events
 
         already_hovering = False
-        for body in universe.objects:
+        for body in sorted(universe.objects, key=lambda x: x.mass, reverse=True):
                 
             body_screen_position = screen_position(body.position)
             body_screen_size = body.size(visual_settings['scale'], visual_settings['rescale_factor'])
@@ -309,12 +393,11 @@ def main():
 
             if mouse_distance > body_screen_size+1000:
                 continue
-
-            color = COLORS['HOVERING']
             
             if mouse_distance < body_screen_size+12 and not already_hovering:
                 already_hovering = True
                 hovering = body.mouse_hovering = True
+
                 if mouse_state[0] and not was_left_clicked:
                     body.selected = not body.selected
                     was_left_clicked = True
@@ -322,80 +405,21 @@ def main():
                     was_left_clicked = False
                     
                 if tracked_keys[pygame.K_x]:
-                    n = settings['fragments']
-                    angle_increment = 2*math.pi/n
-                    internal_angle = math.pi-2*math.pi/n
-                    mass = body.mass/n
-
-                    removed_bodies.append(body.name)
-                    fragment_radius = body.radius*0.4
-                    distance_from_center = fragment_radius/math.cos(internal_angle/2)
-
-                    for k in range(n):
-                        
-                        angle = angle_increment*k
-                        normalized_direction = np.array([math.cos(angle), math.sin(angle), 0])
-                        name = f"{body.name} {k}"
-                        new_body_dict[name] = Body(
-                            name=name,
-                            color=body.color,
-                            mass=mass,
-                            radius=fragment_radius,
-                            position=body.position+normalized_direction*distance_from_center,
-                            velocity=body.velocity+(normalized_direction)*1500000*math.sqrt(const.G*(n/2-1)*mass**0.6/distance_from_center),
-                            )
-
+                    body.shatter(settings['fragments'], removed_bodies, new_bodies)
                     tracked_keys[pygame.K_x] = False
                     continue
                 
             else:
                 body.mouse_hovering = False
 
-            if body.selected:
-                color = body.color
-                if body.mouse_hovering:
-                    color = COLORS['SELECTED']
+        purge_dict(universe.object_dict, removed_bodies)
 
-            if body.mouse_hovering or body.selected:
-                try:
-                    color = pygame.Color(color)
-                    gfxdraw.aacircle(gui_surface, *((int(x) for x in body_screen_position)), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
-                    gfxdraw.filled_circle(gui_surface, *((int(x) for x in body_screen_position)), int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), color)
-                    gfxdraw.filled_circle(gui_surface, *((int(x) for x in body_screen_position)), int(body_screen_size)+visual_settings['hollow_segment_length'], COLORS['EMPTY'])
-                    pygame.draw.line(gui_surface, COLORS['EMPTY'],
-                                    (body_screen_position[0]-(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2), body_screen_position[1]),
-                                    (body_screen_position[0]+(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2), body_screen_position[1]),
-                                    int(body_screen_size/2)+3)
-                    pygame.draw.line(gui_surface, COLORS['EMPTY'],
-                                    (body_screen_position[0], body_screen_position[1]-(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2)),
-                                    (body_screen_position[0], body_screen_position[1]+(int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness'])+2)),
-                                    int(body_screen_size/2)+3)
-                except:
-                    pass
+        universe.object_dict.update(new_bodies)
 
-                if visual_settings['display_names']:
-                    pygame.draw.line(gui_surface, color,
-                                    (body_screen_position[0]+int(body_screen_size)+(visual_settings['hollow_segment_length']+visual_settings['circumference_thickness']), body_screen_position[1]),
-                                    (body_screen_position[0]+int(body_screen_size)+60, body_screen_position[1]),
-                                    )
-                    gui_surface.blit(Consolas.render(body.name, True, color), (body_screen_position[0]+int(body_screen_size)+66, body_screen_position[1]-7))
-                    
-                    body_info = [
-                        f"Mass: {np.format_float_scientific(body.mass)}",
-                        f"Radius: {np.format_float_scientific(body.radius)}",
-                    ]
-
-                    for n, text in enumerate(body_info):
-                        gui_surface.blit(Consolas_small.render(text, True, color), (body_screen_position[0]+int(body_screen_size)+70, body_screen_position[1]+9+15*n))
-
-        for body in removed_bodies:
-            del universe.object_dict[body]
-
-        universe.object_dict.update(new_body_dict)
-
-        # Draw bodies with low mass first
+        # Draw bodies with low mass first to prioritize planets over moons.
         for body in sorted(universe.objects, key=lambda x: x.mass):
-            draw_body(body)
+            draw_body(body, screen, screen_position(body.position))
+            draw_body_info(body, gui_surface, Consolas, Consolas_small, screen_position(body.position))
 
         if settings['paused']:
             gui_surface.blit(Courier_New.render('SIMULATION PAUSED', True, '#4460ff'), (WIDTH/2-92, 36))
@@ -425,7 +449,7 @@ def main():
             (f"{round(speed/60/60/24,2)} days per second", COLORS['TEXT']),
             (f"{round(speed/60/60/24/365.25,3)} years per second", COLORS['TEXT']),
             (f"{round(visual_settings['scale']/10**(int(math.log10(visual_settings['scale']))),3)}e{int(math.log10(visual_settings['scale']))} meters per pixel", COLORS['TEXT']),
-            (f"Total mass: {round(universe.mass/10**(int(math.log10(universe.mass))),6)}e{int(math.log10(universe.mass))} kg", COLORS['TEXT']),
+            #(f"Total mass: {round(universe.mass/10**(int(math.log10(universe.mass))),6)}e{int(math.log10(universe.mass))} kg", COLORS['TEXT']),
             (f"Number of bodies: {len(universe.objects)}", COLORS['TEXT']),
             (f"FPS: {round(settings['TRUE_FPS'],3)}", COLORS['TEXT']),
         ]
