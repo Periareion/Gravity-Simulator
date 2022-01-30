@@ -1,8 +1,8 @@
 
-if __name__ == '__main__':
+try:
     import const
     from ObjectClasses import RawObject
-else:
+except ModuleNotFoundError:
     from modules import const
     from modules.ObjectClasses import RawObject
 

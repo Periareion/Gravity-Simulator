@@ -1,11 +1,12 @@
+from importlib.util import module_for_loader
 import math
 
-if __name__ == '__main__':
+try:
     import const
     from systems_core import System
     from ObjectClasses import RawObject as Object
     from objects import *
-else:
+except ModuleNotFoundError:
     from modules import const
     from modules.systems_core import System
     from modules.ObjectClasses import RawObject as Object
